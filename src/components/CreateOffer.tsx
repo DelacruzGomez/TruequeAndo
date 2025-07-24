@@ -1,9 +1,26 @@
-import { ArrowLeft, DollarSign, FileText, MapPin, Phone, Tag } from 'lucide-react';
+// CreateOffer.tsx
+import {
+  ArrowLeft,
+  DollarSign,
+  FileText,
+  MapPin,
+  Phone,
+  Tag
+} from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { supabase } from '../lib/supabaseClient';
+import { v4 as uuidv4 } from 'uuid';
 
 export function CreateOffer() {
-  const { addOffer, updateOffer, selectedOffer, setCurrentPage, setSelectedOffer, currentUser } = useApp();
+  const {
+    addOffer,
+    updateOffer,
+    selectedOffer,
+    setCurrentPage,
+    setSelectedOffer,
+    currentUser
+  } = useApp();
 
   const [formData, setFormData] = useState({
     id: '',
@@ -14,82 +31,115 @@ export function CreateOffer() {
     location: '',
     imageUrl: '',
     whatsappNumber: '',
-    exchangeValue: ''
+    exchangeValue: '',
+    isActive: true
   });
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Detectar si estamos editando
   useEffect(() => {
     if (selectedOffer) {
       setFormData({
         ...selectedOffer,
-        userId: selectedOffer.userId || currentUser.id // Asegura el userId
+        userId: selectedOffer.userId || currentUser?.id || '',
+        isActive: selectedOffer.isActive
       });
       setIsEditing(true);
     } else {
-      // Resetear para nueva oferta
       setFormData({
         id: '',
-        userId: currentUser.id,
+        userId: currentUser?.id || '',
         title: '',
         category: 'producto',
         description: '',
         location: '',
         imageUrl: '',
         whatsappNumber: '',
-        exchangeValue: ''
+        exchangeValue: '',
+        isActive: true
       });
       setIsEditing(false);
-      //Nueva oferta
     }
-  }, [selectedOffer, currentUser.id]);
+  }, [selectedOffer, currentUser?.id]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const finalData = {
       ...formData,
-      id: isEditing ? formData.id : crypto.randomUUID(),
-      userId: currentUser.id
+      id: isEditing ? formData.id : uuidv4(),
+      userId: currentUser?.id || '',
+      isActive: formData.isActive
     };
 
-    const submitData = (data: typeof formData) => {
-      if (isEditing) {
-        updateOffer(data);
-      } else {
-        addOffer(data);
+    const submitData = async (data: typeof formData) => {
+      try {
+        if (isEditing) {
+          if (!selectedOffer || !selectedOffer.id || !selectedOffer.userId) {
+            alert('Error: la oferta seleccionada no es válida.');
+            return;
+          }
+
+          await updateOffer({
+            ...data,
+            id: selectedOffer.id,
+            userId: selectedOffer.userId,
+            createdAt: selectedOffer.createdAt,
+            isActive: selectedOffer.isActive,
+            username: selectedOffer.username
+          });
+        } else {
+          await addOffer({ ...data, isActive: true });
+        }
+
+        setSelectedOffer(null);
+        setCurrentPage('dashboard');
+      } catch (error) {
+        console.error('❌ Error al guardar la oferta:', error);
+        alert('❌ Error al guardar la oferta. Revisa la consola.');
       }
-      setSelectedOffer(null); // Limpiar para futuras creaciones
-      setCurrentPage('dashboard');
     };
 
     if (imageFile) {
-  const reader = new FileReader();
-  reader.onloadend = () => {
-    const base64Image = reader.result as string;
-    submitData({ ...finalData, imageUrl: base64Image });
-  };
-  reader.readAsDataURL(imageFile);
-} else {
-  submitData(finalData); // Usa imageUrl si fue ingresada manualmente
-}
+      const fileExt = imageFile.name.split('.').pop();
+      const fileName = `${uuidv4()}.${fileExt}`;
+      const filePath = `${currentUser?.id}/${fileName}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('offers')
+        .upload(filePath, imageFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('❌ Error subiendo imagen:', uploadError);
+        alert('Error al subir la imagen. Revisa la consola.');
+        return;
+      }
+
+      const { data: urlData } = supabase.storage.from('offers').getPublicUrl(filePath);
+      const publicUrl = urlData.publicUrl;
+
+      submitData({ ...finalData, imageUrl: publicUrl });
+    } else {
+      submitData(finalData);
+    }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value
-    });
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setImageFile(file);
-      setFormData({ ...formData, imageUrl: URL.createObjectURL(file) });
+      setFormData(prev => ({ ...prev, imageUrl: URL.createObjectURL(file) }));
     }
   };
 
@@ -98,15 +148,8 @@ export function CreateOffer() {
     setCurrentPage('dashboard');
   };
 
-  const categoryColors = {
-    producto: 'bg-blue-100 text-blue-800',
-    servicio: 'bg-green-100 text-green-800',
-    conocimiento: 'bg-purple-100 text-purple-800'
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center py-4">
@@ -164,11 +207,6 @@ export function CreateOffer() {
                   <option value="conocimiento">Conocimiento</option>
                 </select>
               </div>
-              <div className="mt-2">
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${categoryColors[formData.category]}`}>
-                  {formData.category}
-                </span>
-              </div>
             </div>
 
             {/* Descripción */}
@@ -221,37 +259,31 @@ export function CreateOffer() {
 
             {/* Imagen */}
             <div>
-  <label className="block text-sm font-medium text-gray-700 mb-2">Imagen de la Oferta</label>
-
-  {/* Subida de imagen local */}
-  <input
-    type="file"
-    accept="image/*"
-    id="imageFile"
-    onChange={handleImageChange}
-    className="block w-full mb-3 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:border file:border-gray-300 file:rounded-lg"
-  />
-
-  {/* O ingresar URL de imagen */}
-  <input
-    type="url"
-    id="imageUrl"
-    name="imageUrl"
-    value={formData.imageUrl}
-    onChange={handleInputChange}
-    placeholder="https://ejemplo.com/imagen.jpg"
-    className="w-full px-4 py-3 border border-gray-300 rounded-lg"
-  />
-
-  {/* Vista previa de la imagen */}
-  {formData.imageUrl && (
-    <img
-      src={formData.imageUrl}
-      alt="Vista previa"
-      className="mt-4 w-32 h-32 object-cover rounded-lg"
-    />
-  )}
-</div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Imagen de la Oferta</label>
+              <input
+                type="file"
+                accept="image/*"
+                id="imageFile"
+                onChange={handleImageChange}
+                className="block w-full mb-3 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:border file:border-gray-300 file:rounded-lg"
+              />
+              <input
+                type="url"
+                id="imageUrl"
+                name="imageUrl"
+                value={formData.imageUrl}
+                onChange={handleInputChange}
+                placeholder="https://ejemplo.com/imagen.jpg"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+              />
+              {formData.imageUrl && (
+                <img
+                  src={formData.imageUrl}
+                  alt="Vista previa"
+                  className="mt-4 w-32 h-32 object-cover rounded-lg"
+                />
+              )}
+            </div>
 
             {/* Valor de intercambio */}
             <div>

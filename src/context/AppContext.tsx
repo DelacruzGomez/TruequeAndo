@@ -1,170 +1,323 @@
-import { createContext, ReactNode, useContext, useState } from 'react';
-import { AppContextType, Offer, User } from '../types';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { Offer, User } from '../types';
 
+interface AppContextType {
+  currentUser: User | null;
+  offers: Offer[];
+  selectedOffer: Offer | null;
+  currentPage: string;
+  login: (email: string, password: string) => Promise<boolean>;
+  signup: (name: string, email: string, password: string) => Promise<boolean>;
+  logout: () => void;
+  fetchOffers: () => void;
+  addOffer: (offer: Omit<Offer, 'id' | 'userId' | 'username' | 'createdAt'>) => void;
+  updateOffer: (offer: Offer) => void;
+  setSelectedOffer: (offer: Offer | null) => void;
+  setCurrentPage: (page: string) => void;
+  isSubmitting: boolean;
+}
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-//Datos de Pruebas iniciales
-const mockUsers: User[] = [
-  {
-    id: '1',
-    name: 'José A. Quispe',
-    email: 'jose@gmail.com',
-    password: 'admin123',
-    points: 150,
-    reputation: 4.8,
-    createdAt: '2024-01-15'
-  },
-  {
-    id: '2',
-    name: 'Tais Oscorima',
-    email: 'tais@gmail.com',
-    password: '123456',
-    points: 200,
-    reputation: 4.5,
-    createdAt: '2024-01-10'
-  },
-  {
-    id: '3',
-    name: 'Luis A. De La Cruz',
-    email: 'luisdgjun55@gmail.com',
-    password: 'admin123',
-    points: 150,
-    reputation: 4.8,
-    createdAt: '2024-01-15'
-  }
-];
 
-const mockOffers: Offer[] = [
-  {
-    id: '1',
-    userId: '1',
-    userName: 'José A. Quispe',
-    title: 'Clases de Quechua para Principiantes',
-    category: 'conocimiento',
-    description: 'Enseño el idioma quechua desde nivel básico. Incluye conversación, gramática y cultura andina.',
-    location: 'Centro de Ayacucho',
-    imageUrl: 'https://educaperu.org/wp-content/uploads/2022/09/QUECHUA-WEB.jpg',
-    whatsappNumber: '+51 915 238 259',
-    exchangeValue: 'S/. 40 por sesión o intercambio por clases de computación',
-    createdAt: '2024-01-20',
-    isActive: true
-  },
-  {
-    id: '2',
-    userId: '2',
-    userName: 'Tais Oscorima',
-    title: 'Tejidos Artesanales de Ayacucho',
-    category: 'producto',
-    description: 'Hermosos tejidos hechos a mano con lana de oveja y alpaca 100% natural. Incluye chompas, bufandas y gorros.',
-    location: 'San Juan Bautista',
-    imageUrl: 'https://cdn.pixabay.com/photo/2019/10/28/23/31/fabrics-4585895_1280.jpg',
-    whatsappNumber: '+51 977 117 936',
-    exchangeValue: 'Entre S/. 80-120 según el producto',
-    createdAt: '2024-01-18',
-    isActive: true
-  },
-  {
-    id: '3',
-    userId: '3',
-    userName: 'Luis A. De La Cruz',
-    title: 'Reparación de Computadoras',
-    category: 'servicio',
-    description: 'Servicio técnico especializado en reparación de laptops y computadoras de escritorio. Diagnóstico gratuito.',
-    location: 'Huamanga',
-    imageUrl: 'https://media-lim1-1.cdn.whatsapp.net/v/t61.24694-24/404848781_390677396642394_3032769372981746677_n.jpg?ccb=11-4&oh=01_Q5Aa1wFoy1-6MTPY1je8gm1GIqp_LiAdVHPTwWg8G1TgUIWfdQ&oe=685950E2&_nc_sid=5e03e0&_nc_cat=109',
-    whatsappNumber: '+51 930 401 372',
-    exchangeValue: 'S/. 60 o intercambio por productos electrónicos',
-    createdAt: '2024-01-16',
-    isActive: true
-  }
-];
-
-export function AppProvider({ children }: { children: ReactNode }) {
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>(mockUsers);
-  const [offers, setOffers] = useState<Offer[]>(mockOffers);
-  const [currentPage, setCurrentPage] = useState('landing');
+  const [offers, setOffers] = useState<Offer[]>([]);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
+  const [currentPage, setCurrentPage] = useState<string>('dashboard');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  const login = (email: string, password: string): boolean => {
-    const user = users.find(u => u.email === email && u.password === password);
-    if (user) {
-      setCurrentUser(user);
-      setCurrentPage('dashboard');
-      return true;
+  useEffect(() => {
+    fetchUser();
+    fetchOffers();
+  }, []);
+
+  const fetchUser = async () => {
+    const {
+      data: { user },
+      error
+    } = await supabase.auth.getUser();
+
+    if (user && user.id) {
+      const { data, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (data && !userError) {
+        setCurrentUser(data);
+      }
     }
-    return false;
   };
 
-  const signup = (name: string, email: string, password: string): boolean => {
-    if (users.find(u => u.email === email)) {
+  const fetchOffers = async () => {
+    const { data, error } = await supabase
+      .from('offers')
+      .select(`
+        id, user_id, title, description, category, location, image_url, whatsapp, exchange_value, created_at, is_active,
+        users ( name )
+      `)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ Error al obtener ofertas:', error.message);
+      return;
+    }
+
+    if (data) {
+      setOffers(
+        data.map((o: any) => ({
+          id: o.id,
+          userId: o.user_id,
+          username: o.users?.name || 'Sin nombre',
+          title: o.title,
+          description: o.description,
+          category: o.category,
+          location: o.location,
+          imageUrl: o.image_url,
+          whatsappNumber: o.whatsapp,
+          exchangeValue: o.exchange_value,
+          createdAt: o.created_at,
+          isActive: o.is_active ?? true
+        }))
+      );
+    }
+  };
+
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      if (!email || !password) {
+        alert('Correo y contraseña requeridos.');
+        return false;
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        console.error('❌ Error en login:', error.message);
+        alert('Credenciales inválidas o usuario no registrado.');
+        return false;
+      }
+
+      if (data.user) {
+        setCurrentUser({
+          id: data.user.id,
+          name: '',
+          email: data.user.email!,
+          
+          password: '',
+          points: 0,
+          reputation: 0,
+          createdAt: new Date().toISOString()
+        });
+        await fetchUser();
+        await fetchOffers(); // ✅ <- importante
+        return true;
+      }
+
+      return false;
+    } catch (err) {
+      console.error('⚠️ Error inesperado en login:', err);
       return false;
     }
-    const newUser: User = {
-      id: Date.now().toString(),
-      name,
-      email,
-      password,
-      points: 100,
-      reputation: 5.0,
-      createdAt: new Date().toISOString()
-    };
-    setUsers([...users, newUser]);
-    setCurrentUser(newUser);
-    setCurrentPage('dashboard');
-    return true;
   };
 
-  const logout = () => {
+  const signup = async (name: string, email: string, password: string): Promise<boolean> => {
+    if (!email || !password || !name) {
+      alert('Todos los campos son requeridos.');
+      return false;
+    }
+
+    if (isSubmitting) {
+      console.warn('⏳ Registro ya en curso, espera...');
+      return false;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const { data, error } = await supabase.auth.signUp({ email, password });
+
+      if (error) {
+        console.error('❌ Error en signup:', error.message);
+        alert(`Error al registrar: ${error.message}`);
+        return false;
+      }
+
+      if (data.user) {
+        const { error: insertError } = await supabase.from('users').insert({
+          id: data.user.id,
+          name,
+          email
+        });
+
+        if (insertError) {
+          console.error('❌ Error insertando en tabla users:', insertError.message);
+          alert('No se pudo guardar datos del usuario en la base.');
+          return false;
+        }
+
+        await fetchUser();
+        await fetchOffers(); // ✅ <- importante
+        return true;
+      }
+
+      return false;
+    } catch (err) {
+      console.error('⚠️ Error inesperado en signup:', err);
+      alert('Error inesperado durante el registro.');
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
-    setCurrentPage('landing');
-  };
-
-  const addOffer = (offerData: Omit<Offer, 'id' | 'userId' | 'userName' | 'createdAt'>) => {
-    if (!currentUser) return;
-    const newOffer: Offer = {
-      ...offerData,
-      id: Date.now().toString(),
-      userId: currentUser.id,
-      userName: currentUser.name,
-      createdAt: new Date().toISOString(),
-      isActive: true
-    };
-    setOffers([newOffer, ...offers]);
-    setCurrentPage('dashboard');
-  };
-
-  const updateOffer = (updatedOffer: Offer) => {
-    setOffers(prevOffers =>
-      prevOffers.map(o => (o.id === updatedOffer.id ? { ...updatedOffer } : o))
-    );
+    setOffers([]);
     setSelectedOffer(null);
-   // setCurrentPage('dashboard');
-    setCurrentPage('browse-offers');
+    setCurrentPage('login');
   };
 
-  const value: AppContextType = {
-    currentUser,
-    users,
-    offers,
-    login,
-    signup,
-    logout,
-    addOffer,
-    updateOffer,
-    currentPage,
-    setCurrentPage,
-    selectedOffer,
-    setSelectedOffer
+  const addOffer = async (
+    offerData: Omit<Offer, 'id' | 'userId' | 'username' | 'createdAt'>
+  ) => {
+    if (!currentUser) {
+      console.warn('❌ No hay usuario autenticado');
+      return;
+    }
+
+    const { data, error } = await supabase.from('offers').insert([{
+      user_id: currentUser.id,
+      title: offerData.title,
+      description: offerData.description,
+      category: offerData.category,
+      location: offerData.location,
+      image_url: offerData.imageUrl,
+      whatsapp: offerData.whatsappNumber,
+      exchange_value: offerData.exchangeValue,
+      created_at: new Date().toISOString(),
+      is_active: true
+    }]).select();
+
+    if (error) {
+      console.error('❌ Error al insertar la oferta:', error.message);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      console.error('❌ Supabase insertó pero no devolvió datos.');
+      return;
+    }
+
+    const o = data[0];
+    const newOffer: Offer = {
+      id: o.id,
+      userId: o.user_id,
+      username: currentUser.name,
+      title: o.title,
+      description: o.description,
+      category: o.category,
+      location: o.location,
+      imageUrl: o.image_url,
+      whatsappNumber: o.whatsapp,
+      exchangeValue: o.exchange_value,
+      createdAt: o.created_at,
+      isActive: o.is_active ?? true
+    };
+
+    setOffers(prev => [newOffer, ...prev]);
+    setSelectedOffer(newOffer);
+    setCurrentPage('offer-detail');
+    console.log('✅ Oferta insertada correctamente');
   };
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
-}
+  const updateOffer = async (offer: Offer) => {
+    console.log('✏️ Actualizando oferta con ID:', offer.id);
 
-export function useApp() {
+    const { data, error } = await supabase
+      .from('offers')
+      .update({
+        title: offer.title,
+        description: offer.description,
+        category: offer.category,
+        location: offer.location,
+        image_url: offer.imageUrl,
+        whatsapp: offer.whatsappNumber,
+        exchange_value: offer.exchangeValue,
+        is_active: offer.isActive
+      })
+      .eq('id', offer.id)
+      .eq('user_id', offer.userId)
+      .select();
+
+    if (error) {
+      console.error('❌ Error al actualizar la oferta:', error.message);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      console.warn('⚠️ Supabase actualizó pero no devolvió datos');
+      return;
+    }
+
+    const updated = data[0];
+    const updatedOffer: Offer = {
+      id: updated.id,
+      userId: updated.user_id,
+      username: offer.username,
+      title: updated.title,
+      description: updated.description,
+      category: updated.category,
+      location: updated.location,
+      imageUrl: updated.image_url,
+      whatsappNumber: updated.whatsapp,
+      exchangeValue: updated.exchange_value,
+      createdAt: updated.created_at,
+      isActive: updated.is_active ?? true
+    };
+
+    setOffers(prev => prev.map(o => (o.id === updatedOffer.id ? updatedOffer : o)));
+    setSelectedOffer(updatedOffer);
+    setCurrentPage('offer-detail');
+    console.log('✅ Oferta actualizada');
+  };
+
+  return (
+    <AppContext.Provider
+      value={{
+        currentUser,
+        offers,
+        selectedOffer,
+        currentPage,
+        login,
+        signup,
+        logout,
+        fetchOffers,
+        addOffer,
+        updateOffer,
+        setSelectedOffer,
+        setCurrentPage,
+        isSubmitting
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = (): AppContextType => {
   const context = useContext(AppContext);
-  if (context === undefined) {
-    throw new Error('useApp must be used within an AppProvider');
+  if (!context) {
+    throw new Error('useApp debe usarse dentro de un AppProvider');
   }
   return context;
-}
+};

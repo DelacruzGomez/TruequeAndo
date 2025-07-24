@@ -175,7 +175,7 @@ export function BrowseOffers() {
                   {/* Author */}
                   <div className="mt-4 pt-4 border-t border-gray-100">
                     <p className="text-sm text-gray-600">
-                      Por <span className="font-medium">{offer.userName}</span>
+                      Por <span className="font-medium">{offer.username}</span>
                     </p>
                   </div>
                 </div>

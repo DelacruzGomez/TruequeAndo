@@ -11,7 +11,7 @@ export interface User {
 export interface Offer {
   id: string;
   userId: string;
-  userName: string;
+  username?: string; // opcional, solo para frontend
   title: string;
   category: 'producto' | 'servicio' | 'conocimiento';
   description: string;
@@ -30,7 +30,7 @@ export interface AppContextType {
   login: (email: string, password: string) => boolean;
   signup: (name: string, email: string, password: string) => boolean;
   logout: () => void;
-  addOffer: (offer: Omit<Offer, 'id' | 'userId' | 'userName' | 'createdAt'>) => void;
+  addOffer: (offer: Omit<Offer, 'id' | 'userId' | 'username' | 'createdAt'>) => void;
   currentPage: string;
   setCurrentPage: (page: string) => void;
   selectedOffer: Offer | null;
@@ -43,7 +43,7 @@ export interface AppContextType {
   login: (email: string, password: string) => boolean;
   signup: (name: string, email: string, password: string) => boolean;
   logout: () => void;
-  addOffer: (offer: Omit<Offer, 'id' | 'userId' | 'userName' | 'createdAt'>) => void;
+  addOffer: (offer: Omit<Offer, 'id' | 'userId' | 'username' | 'createdAt'>) => void;
   updateOffer: (offer: Offer) => void; // 👈 Agregado
   currentPage: string;
   setCurrentPage: (page: string) => void;

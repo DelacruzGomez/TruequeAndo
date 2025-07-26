@@ -1,8 +1,23 @@
 import { Coins, LogOut, MapPin, Plus, Search, Star } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useEffect, useState } from 'react';
+
+import { getAverageRatingByUserId } from '../utils/ratingUtils';
+
 
 export function Dashboard() {
-  const { currentUser, logout, setCurrentPage, offers } = useApp();
+  const { currentUser, logout, setCurrentPage, offers, getAverageRatingByUserId } = useApp();
+  const [userRating, setUserRating] = useState<number>(0);
+
+  useEffect(() => {
+    const fetchUserRating = async () => {
+      if (currentUser) {
+        const avg = await getAverageRatingByUserId(currentUser.id);
+        setUserRating(avg);
+      }
+    };
+    fetchUserRating();
+  }, [currentUser]);
 
   if (!currentUser) return null;
 
@@ -66,7 +81,7 @@ export function Dashboard() {
               <div className="bg-green-100 p-3 rounded-lg">
                 <Star className="h-6 w-6 text-green-600" />
               </div>
-              <span className="text-2xl font-bold text-gray-900">{currentUser.reputation}</span>
+              <span className="text-2xl font-bold text-gray-900">{userRating.toFixed(1)}</span>
             </div>
             <h3 className="font-semibold text-gray-900">Reputación</h3>
             <p className="text-gray-600 text-sm">Calificación promedio</p>

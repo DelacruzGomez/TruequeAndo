@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Search, Filter, MapPin, Calendar, Eye } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ArrowLeft, Search, Filter, MapPin, Calendar, Eye, Star } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Offer } from '../types';
 
 export function BrowseOffers() {
-  const { offers, setCurrentPage, setSelectedOffer } = useApp();
+  const { offers, setCurrentPage, setSelectedOffer, getAverageRating } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todas');
+  const [ratingsMap, setRatingsMap] = useState<Record<string, number>>({});
 
   const filteredOffers = offers.filter(offer => {
     const matchesSearch = offer.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -14,6 +15,18 @@ export function BrowseOffers() {
     const matchesCategory = selectedCategory === 'todas' || offer.category === selectedCategory;
     return matchesSearch && matchesCategory && offer.isActive;
   });
+
+  useEffect(() => {
+    const fetchRatings = async () => {
+      const map: Record<string, number> = {};
+      for (const offer of offers) {
+        const avg = await getAverageRating(offer.id);
+        map[offer.id] = avg;
+      }
+      setRatingsMap(map);
+    };
+    fetchRatings();
+  }, [offers]);
 
   const handleOfferClick = (offer: Offer) => {
     setSelectedOffer(offer);
@@ -155,6 +168,19 @@ export function BrowseOffers() {
                       {formatDate(offer.createdAt)}
                     </div>
                   </div>
+
+                  {/* Rating Stars */}
+                  {ratingsMap[offer.id] !== undefined && (
+                    <div className="flex items-center text-yellow-500 text-sm mb-3">
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={i}
+                          className={`h-4 w-4 ${i < Math.round(ratingsMap[offer.id]) ? 'fill-current' : 'text-gray-300'}`}
+                        />
+                      ))}
+                      <span className="ml-2 text-gray-600">{ratingsMap[offer.id].toFixed(1)}</span>
+                    </div>
+                  )}
 
                   {/* Exchange Value */}
                   <div className="mb-4">

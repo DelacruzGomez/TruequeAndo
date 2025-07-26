@@ -13,6 +13,7 @@ interface AppContextType {
   fetchOffers: () => void;
   addOffer: (offer: Omit<Offer, 'id' | 'userId' | 'username' | 'createdAt'>) => void;
   updateOffer: (offer: Offer) => void;
+  getAverageRating: (offerId: string) => Promise<number>;
   setSelectedOffer: (offer: Offer | null) => void;
   setCurrentPage: (page: string) => void;
   isSubmitting: boolean;
@@ -86,6 +87,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const getAverageRating = async (offerId: string): Promise<number> => {
+    const { data, error } = await supabase
+      .from('ratings')
+      .select('rating')
+      .eq('offer_id', offerId);
+
+    if (error || !data) return 0;
+
+    const ratings = data.map(r => r.rating);
+    const avg = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
+    return avg;
+  };
+
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       if (!email || !password) {
@@ -109,14 +123,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           id: data.user.id,
           name: '',
           email: data.user.email!,
-          
           password: '',
           points: 0,
           reputation: 0,
           createdAt: new Date().toISOString()
         });
         await fetchUser();
-        await fetchOffers(); // ✅ <- importante
+        await fetchOffers();
         return true;
       }
 
@@ -165,7 +178,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         await fetchUser();
-        await fetchOffers(); // ✅ <- importante
+        await fetchOffers();
         return true;
       }
 
@@ -304,6 +317,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetchOffers,
         addOffer,
         updateOffer,
+        getAverageRating,
         setSelectedOffer,
         setCurrentPage,
         isSubmitting

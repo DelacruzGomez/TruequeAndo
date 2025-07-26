@@ -1,14 +1,14 @@
 import {
   ArrowLeft,
   Calendar,
-  DollarSign,
   MapPin,
   MessageCircle,
   Pencil,
   Phone,
   Share2,
   Star,
-  User
+  CheckCircle,
+  Trash2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useEffect, useState } from 'react';
@@ -18,21 +18,20 @@ export function OfferDetail() {
   const {
     selectedOffer,
     setCurrentPage,
-    users,
     currentUser,
-    setSelectedOffer
+    setSelectedOffer,
+    fetchOffers
   } = useApp();
 
   const [averageRating, setAverageRating] = useState(0);
   const [ratingCount, setRatingCount] = useState(0);
   const [userRating, setUserRating] = useState<number | null>(null);
+  const [authorName, setAuthorName] = useState<string>('');
 
   if (!selectedOffer) {
     setCurrentPage('browse-offers');
     return null;
   }
-
-  const offerAuthor = users?.find(user => user.id === selectedOffer.userId);
 
   const categoryColors = {
     producto: 'bg-blue-100 text-blue-800',
@@ -58,7 +57,7 @@ export function OfferDetail() {
   };
 
   const fetchRatings = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('ratings')
       .select('rating')
       .eq('offer_id', selectedOffer.id);
@@ -84,6 +83,16 @@ export function OfferDetail() {
     }
   };
 
+  const fetchAuthorName = async () => {
+    const { data } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', selectedOffer.userId)
+      .single();
+
+    if (data?.name) setAuthorName(data.name);
+  };
+
   const submitRating = async (value: number) => {
     if (!currentUser) return;
 
@@ -97,12 +106,42 @@ export function OfferDetail() {
 
     if (!error) {
       setUserRating(value);
-      fetchRatings(); // Refresh after voting
+      fetchRatings();
+    }
+  };
+
+  const markAsCompleted = async () => {
+    const { error } = await supabase
+      .from('offers')
+      .update({ is_active: false })
+      .eq('id', selectedOffer.id);
+
+    if (!error) {
+      alert('✅ Oferta marcada como completada');
+      fetchOffers();
+      setCurrentPage('dashboard');
+    }
+  };
+
+  const deleteOffer = async () => {
+    const confirmed = confirm('¿Estás seguro de que deseas eliminar esta oferta? Esta acción no se puede deshacer.');
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from('offers')
+      .delete()
+      .eq('id', selectedOffer.id);
+
+    if (!error) {
+      alert('🗑️ Oferta eliminada exitosamente');
+      fetchOffers();
+      setCurrentPage('dashboard');
     }
   };
 
   useEffect(() => {
     fetchRatings();
+    fetchAuthorName();
   }, [selectedOffer?.id, currentUser?.id]);
 
   const isOwnOffer = currentUser?.id === selectedOffer.userId;
@@ -129,7 +168,12 @@ export function OfferDetail() {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-          {/* Imagen */}
+          {!selectedOffer.isActive && (
+            <div className="bg-red-100 text-red-800 text-center py-3 font-semibold">
+              Oferta no disponible
+            </div>
+          )}
+
           <div className="aspect-video bg-gray-200">
             {selectedOffer.imageUrl ? (
               <img
@@ -157,6 +201,10 @@ export function OfferDetail() {
 
             <h1 className="text-3xl font-bold text-gray-900 mb-4">{selectedOffer.title}</h1>
 
+            {!selectedOffer.isActive && (
+              <p className="text-sm font-semibold text-red-600 mb-4">Esta oferta ya fue completada</p>
+            )}
+
             <div className="flex flex-wrap gap-6 mb-6 text-sm text-gray-600">
               <div className="flex items-center">
                 <MapPin className="h-4 w-4 mr-2" />
@@ -179,15 +227,14 @@ export function OfferDetail() {
               </p>
             </div>
 
-            {/* RATING + OFERENTE */}
             <div className="mb-8 bg-gray-50 rounded-xl p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Sobre el oferente</h3>
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-orange-600 text-white flex items-center justify-center rounded-full font-semibold text-lg">
-                  {offerAuthor?.name?.charAt(0).toUpperCase()}
+                  {authorName?.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1">
-                  <p className="font-semibold text-gray-800">{offerAuthor?.name}</p>
+                  <p className="font-semibold text-gray-800">{authorName || 'Usuario sin nombre'}</p>
                   <p className="text-sm text-gray-500">
                     ⭐ {averageRating.toFixed(1)} estrellas • {ratingCount} votos
                   </p>
@@ -213,7 +260,7 @@ export function OfferDetail() {
               )}
             </div>
 
-            {!isOwnOffer && (
+            {!isOwnOffer && selectedOffer.isActive && (
               <div className="border-t pt-8">
                 <button
                   onClick={handleWhatsAppContact}
@@ -227,23 +274,48 @@ export function OfferDetail() {
 
             {isOwnOffer && (
               <div className="border-t pt-8">
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
-                  <h3 className="font-semibold text-blue-900 mb-2">Esta es tu oferta</h3>
-                  <p className="text-blue-700 mb-3">
-                    Los interesados podrán contactarte directamente por WhatsApp
-                  </p>
-                  <div className="text-blue-800 font-medium">{selectedOffer.whatsappNumber}</div>
-                </div>
-                <div className="mt-6 flex justify-center">
+                {selectedOffer.isActive ? (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
+                    <h3 className="font-semibold text-blue-900 mb-2">Esta es tu oferta</h3>
+                    <p className="text-blue-700 mb-3">
+                      Los interesados podrán contactarte directamente por WhatsApp
+                    </p>
+                    <div className="text-blue-800 font-medium">{selectedOffer.whatsappNumber}</div>
+                  </div>
+                ) : (
+                  <p className="text-red-600 font-semibold text-center">Oferta inactiva</p>
+                )}
+
+                <div className="mt-6 flex flex-col sm:flex-row gap-4 justify-center">
+                  {selectedOffer.isActive && (
+                    <button
+                      onClick={() => {
+                        setCurrentPage('create-offer');
+                        setSelectedOffer(selectedOffer);
+                      }}
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 px-6 rounded-xl flex items-center gap-2"
+                    >
+                      <Pencil className="h-5 w-5" />
+                      Editar Oferta
+                    </button>
+                  )}
+
+                  {selectedOffer.isActive && (
+                    <button
+                      onClick={markAsCompleted}
+                      className="bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-6 rounded-xl flex items-center gap-2"
+                    >
+                      <CheckCircle className="h-5 w-5" />
+                      Marcar como Trueque Completado
+                    </button>
+                  )}
+
                   <button
-                    onClick={() => {
-                      setCurrentPage('create-offer');
-                      setSelectedOffer(selectedOffer);
-                    }}
-                    className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 px-6 rounded-xl flex items-center gap-2"
+                    onClick={deleteOffer}
+                    className="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-xl flex items-center gap-2"
                   >
-                    <Pencil className="h-5 w-5" />
-                    Editar Oferta
+                    <Trash2 className="h-5 w-5" />
+                    Eliminar Oferta
                   </button>
                 </div>
               </div>
